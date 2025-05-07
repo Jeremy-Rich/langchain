@@ -1,5 +1,6 @@
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 
+from langchain_core._api import deprecated
 from langchain_core.messages import BaseMessage, get_buffer_string
 from langchain_core.utils import pre_init
 
@@ -7,36 +8,49 @@ from langchain.memory.chat_memory import BaseChatMemory
 from langchain.memory.summary import SummarizerMixin
 
 
+@deprecated(
+    since="0.3.1",
+    removal="1.0.0",
+    message=(
+        "Please see the migration guide at: "
+        "https://python.langchain.com/docs/versions/migrating_memory/"
+    ),
+)
 class ConversationSummaryBufferMemory(BaseChatMemory, SummarizerMixin):
-    """Buffer with summarizer for storing conversation memory."""
+    """Buffer with summarizer for storing conversation memory.
+
+    Provides a running summary of the conversation together with the most recent
+    messages in the conversation under the constraint that the total number of
+    tokens in the conversation does not exceed a certain limit.
+    """
 
     max_token_limit: int = 2000
     moving_summary_buffer: str = ""
     memory_key: str = "history"
 
     @property
-    def buffer(self) -> Union[str, List[BaseMessage]]:
+    def buffer(self) -> Union[str, list[BaseMessage]]:
         """String buffer of memory."""
         return self.load_memory_variables({})[self.memory_key]
 
-    async def abuffer(self) -> Union[str, List[BaseMessage]]:
+    async def abuffer(self) -> Union[str, list[BaseMessage]]:
         """Async memory buffer."""
         memory_variables = await self.aload_memory_variables({})
         return memory_variables[self.memory_key]
 
     @property
-    def memory_variables(self) -> List[str]:
+    def memory_variables(self) -> list[str]:
         """Will always return list of memory variables.
 
         :meta private:
         """
         return [self.memory_key]
 
-    def load_memory_variables(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    def load_memory_variables(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Return history buffer."""
         buffer = self.chat_memory.messages
         if self.moving_summary_buffer != "":
-            first_messages: List[BaseMessage] = [
+            first_messages: list[BaseMessage] = [
                 self.summary_message_cls(content=self.moving_summary_buffer)
             ]
             buffer = first_messages + buffer
@@ -48,11 +62,11 @@ class ConversationSummaryBufferMemory(BaseChatMemory, SummarizerMixin):
             )
         return {self.memory_key: final_buffer}
 
-    async def aload_memory_variables(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
+    async def aload_memory_variables(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Asynchronously return key-value pairs given the text input to the chain."""
         buffer = await self.chat_memory.aget_messages()
         if self.moving_summary_buffer != "":
-            first_messages: List[BaseMessage] = [
+            first_messages: list[BaseMessage] = [
                 self.summary_message_cls(content=self.moving_summary_buffer)
             ]
             buffer = first_messages + buffer
@@ -65,7 +79,7 @@ class ConversationSummaryBufferMemory(BaseChatMemory, SummarizerMixin):
         return {self.memory_key: final_buffer}
 
     @pre_init
-    def validate_prompt_input_variables(cls, values: Dict) -> Dict:
+    def validate_prompt_input_variables(cls, values: dict) -> dict:
         """Validate that prompt input variables are consistent."""
         prompt_variables = values["prompt"].input_variables
         expected_keys = {"summary", "new_lines"}
@@ -76,13 +90,13 @@ class ConversationSummaryBufferMemory(BaseChatMemory, SummarizerMixin):
             )
         return values
 
-    def save_context(self, inputs: Dict[str, Any], outputs: Dict[str, str]) -> None:
+    def save_context(self, inputs: dict[str, Any], outputs: dict[str, str]) -> None:
         """Save context from this conversation to buffer."""
         super().save_context(inputs, outputs)
         self.prune()
 
     async def asave_context(
-        self, inputs: Dict[str, Any], outputs: Dict[str, str]
+        self, inputs: dict[str, Any], outputs: dict[str, str]
     ) -> None:
         """Asynchronously save context from this conversation to buffer."""
         await super().asave_context(inputs, outputs)

@@ -1,12 +1,13 @@
 """Test chat model integration."""
 
 import os
-from typing import Any, Callable, Dict, Literal, Type, cast
+from typing import Any, Callable, Literal, cast
+from unittest.mock import patch
 
+import anthropic
 import pytest
 from anthropic.types import Message, TextBlock, Usage
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_core.runnables import RunnableBinding
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field, SecretStr
@@ -14,6 +15,7 @@ from pytest import CaptureFixture, MonkeyPatch
 
 from langchain_anthropic import ChatAnthropic
 from langchain_anthropic.chat_models import (
+    _format_image,
     _format_messages,
     _merge_messages,
     convert_to_anthropic_tool,
@@ -58,9 +60,12 @@ def test_anthropic_model_kwargs() -> None:
 
 
 @pytest.mark.requires("anthropic")
-def test_anthropic_invalid_model_kwargs() -> None:
-    with pytest.raises(ValueError):
-        ChatAnthropic(model="foo", model_kwargs={"max_tokens_to_sample": 5})  # type: ignore[call-arg]
+def test_anthropic_fields_in_model_kwargs() -> None:
+    """Test that for backwards compatibility fields can be passed in as model_kwargs."""
+    llm = ChatAnthropic(model="foo", model_kwargs={"max_tokens_to_sample": 5})  # type: ignore[call-arg]
+    assert llm.max_tokens == 5
+    llm = ChatAnthropic(model="foo", model_kwargs={"max_tokens": 5})  # type: ignore[call-arg]
+    assert llm.max_tokens == 5
 
 
 @pytest.mark.requires("anthropic")
@@ -89,30 +94,49 @@ def test__format_output() -> None:
         usage=Usage(input_tokens=2, output_tokens=1),
         type="message",
     )
-    expected = ChatResult(
-        generations=[
-            ChatGeneration(
-                message=AIMessage(  # type: ignore[misc]
-                    "bar",
-                    usage_metadata={
-                        "input_tokens": 2,
-                        "output_tokens": 1,
-                        "total_tokens": 3,
-                    },
-                )
-            ),
-        ],
-        llm_output={
-            "id": "foo",
-            "model": "baz",
-            "stop_reason": None,
-            "stop_sequence": None,
-            "usage": {"input_tokens": 2, "output_tokens": 1},
+    expected = AIMessage(  # type: ignore[misc]
+        "bar",
+        usage_metadata={
+            "input_tokens": 2,
+            "output_tokens": 1,
+            "total_tokens": 3,
+            "input_token_details": {},
         },
     )
     llm = ChatAnthropic(model="test", anthropic_api_key="test")  # type: ignore[call-arg, call-arg]
     actual = llm._format_output(anthropic_msg)
-    assert expected == actual
+    assert actual.generations[0].message == expected
+
+
+def test__format_output_cached() -> None:
+    anthropic_msg = Message(
+        id="foo",
+        content=[TextBlock(type="text", text="bar")],
+        model="baz",
+        role="assistant",
+        stop_reason=None,
+        stop_sequence=None,
+        usage=Usage(
+            input_tokens=2,
+            output_tokens=1,
+            cache_creation_input_tokens=3,
+            cache_read_input_tokens=4,
+        ),
+        type="message",
+    )
+    expected = AIMessage(  # type: ignore[misc]
+        "bar",
+        usage_metadata={
+            "input_tokens": 9,
+            "output_tokens": 1,
+            "total_tokens": 10,
+            "input_token_details": {"cache_creation": 3, "cache_read": 4},
+        },
+    )
+
+    llm = ChatAnthropic(model="test", anthropic_api_key="test")  # type: ignore[call-arg, call-arg]
+    actual = llm._format_output(anthropic_msg)
+    assert actual.generations[0].message == expected
 
 
 def test__merge_messages() -> None:
@@ -137,6 +161,13 @@ def test__merge_messages() -> None:
                     "text": None,
                     "name": "blah",
                 },
+                {
+                    "tool_input": {"a": "c"},
+                    "type": "tool_use",
+                    "id": "3",
+                    "text": None,
+                    "name": "blah",
+                },
             ]
         ),
         ToolMessage("buz output", tool_call_id="1", status="error"),  # type: ignore[misc]
@@ -153,6 +184,7 @@ def test__merge_messages() -> None:
             ],
             tool_call_id="2",
         ),  # type: ignore[misc]
+        ToolMessage([], tool_call_id="3"),  # type: ignore[misc]
         HumanMessage("next thing"),  # type: ignore[misc]
     ]
     expected = [
@@ -173,6 +205,13 @@ def test__merge_messages() -> None:
                     "tool_input": {"a": "c"},
                     "type": "tool_use",
                     "id": "2",
+                    "text": None,
+                    "name": "blah",
+                },
+                {
+                    "tool_input": {"a": "c"},
+                    "type": "tool_use",
+                    "id": "3",
                     "text": None,
                     "name": "blah",
                 },
@@ -199,6 +238,12 @@ def test__merge_messages() -> None:
                         },
                     ],
                     "tool_use_id": "2",
+                    "is_error": False,
+                },
+                {
+                    "type": "tool_result",
+                    "content": [],
+                    "tool_use_id": "3",
                     "is_error": False,
                 },
                 {"type": "text", "text": "next thing"},
@@ -254,8 +299,14 @@ def test__merge_messages_mutation() -> None:
     assert messages == original_messages
 
 
+def test__format_image() -> None:
+    url = "dummyimage.com/600x400/000/fff"
+    with pytest.raises(ValueError):
+        _format_image(url)
+
+
 @pytest.fixture()
-def pydantic() -> Type[BaseModel]:
+def pydantic() -> type[BaseModel]:
     class dummy_function(BaseModel):
         """dummy function"""
 
@@ -285,8 +336,8 @@ def dummy_tool() -> BaseTool:
         arg1: int = Field(..., description="foo")
         arg2: Literal["bar", "baz"] = Field(..., description="one of 'bar', 'baz'")
 
-    class DummyFunction(BaseTool):
-        args_schema: Type[BaseModel] = Schema
+    class DummyFunction(BaseTool):  # type: ignore[override]
+        args_schema: type[BaseModel] = Schema
         name: str = "dummy_function"
         description: str = "dummy function"
 
@@ -297,7 +348,7 @@ def dummy_tool() -> BaseTool:
 
 
 @pytest.fixture()
-def json_schema() -> Dict:
+def json_schema() -> dict:
     return {
         "title": "dummy_function",
         "description": "dummy function",
@@ -315,7 +366,7 @@ def json_schema() -> Dict:
 
 
 @pytest.fixture()
-def openai_function() -> Dict:
+def openai_function() -> dict:
     return {
         "name": "dummy_function",
         "description": "dummy function",
@@ -335,11 +386,11 @@ def openai_function() -> Dict:
 
 
 def test_convert_to_anthropic_tool(
-    pydantic: Type[BaseModel],
+    pydantic: type[BaseModel],
     function: Callable,
     dummy_tool: BaseTool,
-    json_schema: Dict,
-    openai_function: Dict,
+    json_schema: dict,
+    openai_function: dict,
 ) -> None:
     expected = {
         "name": "dummy_function",
@@ -366,15 +417,36 @@ def test_convert_to_anthropic_tool(
 def test__format_messages_with_tool_calls() -> None:
     system = SystemMessage("fuzz")  # type: ignore[misc]
     human = HumanMessage("foo")  # type: ignore[misc]
-    ai = AIMessage(  # type: ignore[misc]
-        "",
+    ai = AIMessage(
+        "",  # with empty string
         tool_calls=[{"name": "bar", "id": "1", "args": {"baz": "buzz"}}],
     )
-    tool = ToolMessage(  # type: ignore[misc]
+    ai2 = AIMessage(
+        [],  # with empty list
+        tool_calls=[{"name": "bar", "id": "2", "args": {"baz": "buzz"}}],
+    )
+    tool = ToolMessage(
         "blurb",
         tool_call_id="1",
     )
-    messages = [system, human, ai, tool]
+    tool_image_url = ToolMessage(
+        [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,...."}}],
+        tool_call_id="2",
+    )
+    tool_image = ToolMessage(
+        [
+            {
+                "type": "image",
+                "source": {
+                    "data": "....",
+                    "type": "base64",
+                    "media_type": "image/jpeg",
+                },
+            }
+        ],
+        tool_call_id="3",
+    )
+    messages = [system, human, ai, tool, ai2, tool_image_url, tool_image]
     expected = (
         "fuzz",
         [
@@ -399,6 +471,52 @@ def test__format_messages_with_tool_calls() -> None:
                         "tool_use_id": "1",
                         "is_error": False,
                     }
+                ],
+            },
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "name": "bar",
+                        "id": "2",
+                        "input": {"baz": "buzz"},
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "data": "....",
+                                    "type": "base64",
+                                    "media_type": "image/jpeg",
+                                },
+                            }
+                        ],
+                        "tool_use_id": "2",
+                        "is_error": False,
+                    },
+                    {
+                        "type": "tool_result",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "data": "....",
+                                    "type": "base64",
+                                    "media_type": "image/jpeg",
+                                },
+                            }
+                        ],
+                        "tool_use_id": "3",
+                        "is_error": False,
+                    },
                 ],
             },
         ],
@@ -454,8 +572,6 @@ def test__format_messages_with_str_content_and_tool_calls() -> None:
 def test__format_messages_with_list_content_and_tool_calls() -> None:
     system = SystemMessage("fuzz")  # type: ignore[misc]
     human = HumanMessage("foo")  # type: ignore[misc]
-    # If content and tool_calls are specified and content is a list, then content is
-    # preferred.
     ai = AIMessage(  # type: ignore[misc]
         [{"type": "text", "text": "thought"}],
         tool_calls=[{"name": "bar", "id": "1", "args": {"baz": "buzz"}}],
@@ -471,7 +587,15 @@ def test__format_messages_with_list_content_and_tool_calls() -> None:
             {"role": "user", "content": "foo"},
             {
                 "role": "assistant",
-                "content": [{"type": "text", "text": "thought"}],
+                "content": [
+                    {"type": "text", "text": "thought"},
+                    {
+                        "type": "tool_use",
+                        "name": "bar",
+                        "id": "1",
+                        "input": {"baz": "buzz"},
+                    },
+                ],
             },
             {
                 "role": "user",
@@ -575,6 +699,157 @@ def test__format_messages_with_cache_control() -> None:
     assert expected_system == actual_system
     assert expected_messages == actual_messages
 
+    # Test standard multi-modal format
+    messages = [
+        HumanMessage(
+            [
+                {
+                    "type": "text",
+                    "text": "Summarize this document:",
+                },
+                {
+                    "type": "file",
+                    "source_type": "base64",
+                    "mime_type": "application/pdf",
+                    "data": "<base64 data>",
+                    "cache_control": {"type": "ephemeral"},
+                },
+            ]
+        )
+    ]
+    actual_system, actual_messages = _format_messages(messages)
+    assert actual_system is None
+    expected_messages = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Summarize this document:",
+                },
+                {
+                    "type": "document",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "application/pdf",
+                        "data": "<base64 data>",
+                    },
+                    "cache_control": {"type": "ephemeral"},
+                },
+            ],
+        }
+    ]
+    assert actual_messages == expected_messages
+
+
+def test__format_messages_with_citations() -> None:
+    input_messages = [
+        HumanMessage(
+            content=[
+                {
+                    "type": "file",
+                    "source_type": "text",
+                    "text": "The grass is green. The sky is blue.",
+                    "mime_type": "text/plain",
+                    "citations": {"enabled": True},
+                },
+                {"type": "text", "text": "What color is the grass and sky?"},
+            ]
+        )
+    ]
+    expected_messages = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "document",
+                    "source": {
+                        "type": "text",
+                        "media_type": "text/plain",
+                        "data": "The grass is green. The sky is blue.",
+                    },
+                    "citations": {"enabled": True},
+                },
+                {"type": "text", "text": "What color is the grass and sky?"},
+            ],
+        }
+    ]
+    actual_system, actual_messages = _format_messages(input_messages)
+    assert actual_system is None
+    assert actual_messages == expected_messages
+
+
+def test__format_messages_openai_image_format() -> None:
+    message = HumanMessage(
+        content=[
+            {
+                "type": "text",
+                "text": "Can you highlight the differences between these two images?",
+            },
+            {
+                "type": "image_url",
+                "image_url": {"url": "data:image/jpeg;base64,<base64 data>"},
+            },
+            {
+                "type": "image_url",
+                "image_url": {"url": "https://<image url>"},
+            },
+        ],
+    )
+    actual_system, actual_messages = _format_messages([message])
+    assert actual_system is None
+    expected_messages = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": (
+                        "Can you highlight the differences between these two images?"
+                    ),
+                },
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": "<base64 data>",
+                    },
+                },
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "url",
+                        "url": "https://<image url>",
+                    },
+                },
+            ],
+        }
+    ]
+    assert actual_messages == expected_messages
+
+
+def test__format_messages_with_multiple_system() -> None:
+    messages = [
+        HumanMessage("baz"),
+        SystemMessage("bar"),
+        SystemMessage("baz"),
+        SystemMessage(
+            [
+                {"type": "text", "text": "foo", "cache_control": {"type": "ephemeral"}},
+            ]
+        ),
+    ]
+    expected_system = [
+        {"type": "text", "text": "bar"},
+        {"type": "text", "text": "baz"},
+        {"type": "text", "text": "foo", "cache_control": {"type": "ephemeral"}},
+    ]
+    expected_messages = [{"role": "user", "content": "baz"}]
+    actual_system, actual_messages = _format_messages(messages)
+    assert expected_system == actual_system
+    assert expected_messages == actual_messages
+
 
 def test_anthropic_api_key_is_secret_string() -> None:
     """Test that the API key is stored as a SecretStr."""
@@ -658,3 +933,24 @@ def test_anthropic_bind_tools_tool_choice() -> None:
     assert cast(RunnableBinding, chat_model_with_tools).kwargs["tool_choice"] == {
         "type": "any"
     }
+
+
+def test_optional_description() -> None:
+    llm = ChatAnthropic(model="claude-3-5-haiku-latest")
+
+    class SampleModel(BaseModel):
+        sample_field: str
+
+    _ = llm.with_structured_output(SampleModel.model_json_schema())
+
+
+def test_get_num_tokens_from_messages_passes_kwargs() -> None:
+    """Test that get_num_tokens_from_messages passes kwargs to the model."""
+    llm = ChatAnthropic(model="claude-3-5-haiku-latest")
+
+    with patch.object(anthropic, "Client") as _Client:
+        llm.get_num_tokens_from_messages([HumanMessage("foo")], foo="bar")
+
+    assert (
+        _Client.return_value.beta.messages.count_tokens.call_args.kwargs["foo"] == "bar"
+    )

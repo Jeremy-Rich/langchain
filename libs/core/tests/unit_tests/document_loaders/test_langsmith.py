@@ -18,21 +18,21 @@ EXAMPLES = [
         outputs={"res": "a"},
         dataset_id=uuid.uuid4(),
         id=uuid.uuid4(),
-        created_at=datetime.datetime.now(),
+        created_at=datetime.datetime.now(datetime.timezone.utc),
     ),
     Example(
         inputs={"first": {"second": "bar"}},
         outputs={"res": "b"},
         dataset_id=uuid.uuid4(),
         id=uuid.uuid4(),
-        created_at=datetime.datetime.now(),
+        created_at=datetime.datetime.now(datetime.timezone.utc),
     ),
     Example(
         inputs={"first": {"second": "baz"}},
         outputs={"res": "c"},
         dataset_id=uuid.uuid4(),
         id=uuid.uuid4(),
-        created_at=datetime.datetime.now(),
+        created_at=datetime.datetime.now(datetime.timezone.utc),
     ),
 ]
 
@@ -54,5 +54,5 @@ def test_lazy_load() -> None:
         expected.append(
             Document(example.inputs["first"]["second"].upper(), metadata=metadata)
         )
-    actual = [doc for doc in loader.lazy_load()]
+    actual = list(loader.lazy_load())
     assert expected == actual

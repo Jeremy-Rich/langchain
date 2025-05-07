@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Type, Union, cast
+from collections.abc import Sequence
+from typing import Any, Optional, Union, cast
 
+from langchain_core._api import deprecated
 from langchain_core.callbacks import Callbacks
 from langchain_core.documents import Document
 from langchain_core.runnables.config import RunnableConfig
@@ -16,6 +18,15 @@ from langchain.chains.llm import LLMChain
 from langchain.output_parsers.regex import RegexParser
 
 
+@deprecated(
+    since="0.3.1",
+    removal="1.0",
+    message=(
+        "This class is deprecated. Please see the migration guide here for "
+        "a recommended replacement: "
+        "https://python.langchain.com/docs/versions/migrating_chains/map_rerank_docs_chain/"  # noqa: E501
+    ),
+)
 class MapRerankDocumentsChain(BaseCombineDocumentsChain):
     """Combining documents by mapping a chain over them, then reranking results.
 
@@ -69,7 +80,7 @@ class MapRerankDocumentsChain(BaseCombineDocumentsChain):
     """Key in output of llm_chain to rank on."""
     answer_key: str
     """Key in output of llm_chain to return as answer."""
-    metadata_keys: Optional[List[str]] = None
+    metadata_keys: Optional[list[str]] = None
     """Additional metadata from the chosen document to return."""
     return_intermediate_steps: bool = False
     """Return intermediate steps.
@@ -82,19 +93,19 @@ class MapRerankDocumentsChain(BaseCombineDocumentsChain):
 
     def get_output_schema(
         self, config: Optional[RunnableConfig] = None
-    ) -> Type[BaseModel]:
-        schema: Dict[str, Any] = {
+    ) -> type[BaseModel]:
+        schema: dict[str, Any] = {
             self.output_key: (str, None),
         }
         if self.return_intermediate_steps:
-            schema["intermediate_steps"] = (List[str], None)
+            schema["intermediate_steps"] = (list[str], None)
         if self.metadata_keys:
             schema.update({key: (Any, None) for key in self.metadata_keys})
 
         return create_model("MapRerankOutput", **schema)
 
     @property
-    def output_keys(self) -> List[str]:
+    def output_keys(self) -> list[str]:
         """Expect input key.
 
         :meta private:
@@ -130,7 +141,7 @@ class MapRerankDocumentsChain(BaseCombineDocumentsChain):
 
     @model_validator(mode="before")
     @classmethod
-    def get_default_document_variable_name(cls, values: Dict) -> Any:
+    def get_default_document_variable_name(cls, values: dict) -> Any:
         """Get default document variable name, if not provided."""
         if "llm_chain" not in values:
             raise ValueError("llm_chain must be provided")
@@ -153,8 +164,8 @@ class MapRerankDocumentsChain(BaseCombineDocumentsChain):
         return values
 
     def combine_docs(
-        self, docs: List[Document], callbacks: Callbacks = None, **kwargs: Any
-    ) -> Tuple[str, dict]:
+        self, docs: list[Document], callbacks: Callbacks = None, **kwargs: Any
+    ) -> tuple[str, dict]:
         """Combine documents in a map rerank manner.
 
         Combine by mapping first chain over all documents, then reranking the results.
@@ -177,8 +188,8 @@ class MapRerankDocumentsChain(BaseCombineDocumentsChain):
         return self._process_results(docs, results)
 
     async def acombine_docs(
-        self, docs: List[Document], callbacks: Callbacks = None, **kwargs: Any
-    ) -> Tuple[str, dict]:
+        self, docs: list[Document], callbacks: Callbacks = None, **kwargs: Any
+    ) -> tuple[str, dict]:
         """Combine documents in a map rerank manner.
 
         Combine by mapping first chain over all documents, then reranking the results.
@@ -202,10 +213,10 @@ class MapRerankDocumentsChain(BaseCombineDocumentsChain):
 
     def _process_results(
         self,
-        docs: List[Document],
-        results: Sequence[Union[str, List[str], Dict[str, str]]],
-    ) -> Tuple[str, dict]:
-        typed_results = cast(List[dict], results)
+        docs: list[Document],
+        results: Sequence[Union[str, list[str], dict[str, str]]],
+    ) -> tuple[str, dict]:
+        typed_results = cast(list[dict], results)
         sorted_res = sorted(
             zip(typed_results, docs), key=lambda x: -int(x[0][self.rank_key])
         )

@@ -1,7 +1,8 @@
 """Retriever that generates and executes structured queries over its own data source."""
 
 import logging
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Type, Union
+from collections.abc import Sequence
+from typing import Any, Optional, Union
 
 from langchain_core.callbacks.manager import (
     AsyncCallbackManagerForRetrieverRun,
@@ -95,7 +96,7 @@ def _get_builtin_translator(vectorstore: VectorStore) -> Visitor:
         Pinecone as CommunityPinecone,
     )
 
-    BUILTIN_TRANSLATORS: Dict[Type[VectorStore], Type[Visitor]] = {
+    BUILTIN_TRANSLATORS: dict[type[VectorStore], type[Visitor]] = {
         AstraDB: AstraDBTranslator,
         PGVector: PGVectorTranslator,
         CommunityPinecone: PineconeTranslator,
@@ -162,6 +163,15 @@ def _get_builtin_translator(vectorstore: VectorStore) -> Visitor:
                 return MongoDBAtlasTranslator()
 
         try:
+            from langchain_neo4j import Neo4jVector
+        except ImportError:
+            pass
+        else:
+            if isinstance(vectorstore, Neo4jVector):
+                return Neo4jTranslator()
+
+        try:
+            # Trying langchain_chroma import if exists
             from langchain_chroma import Chroma
         except ImportError:
             pass
@@ -170,7 +180,7 @@ def _get_builtin_translator(vectorstore: VectorStore) -> Visitor:
                 return ChromaTranslator()
 
         try:
-            from langchain_postgres import PGVector  # type: ignore[no-redef]
+            from langchain_postgres import PGVector
             from langchain_postgres import PGVectorTranslator as NewPGVectorTranslator
         except ImportError:
             pass
@@ -195,6 +205,16 @@ def _get_builtin_translator(vectorstore: VectorStore) -> Visitor:
         else:
             if isinstance(vectorstore, HanaDB):
                 return HanaTranslator()
+
+        try:
+            # Trying langchain_weaviate (weaviate v4) import if exists
+            from langchain_weaviate.vectorstores import WeaviateVectorStore
+
+        except ImportError:
+            pass
+        else:
+            if isinstance(vectorstore, WeaviateVectorStore):
+                return WeaviateTranslator()
 
         raise ValueError(
             f"Self query retriever with Vector Store type {vectorstore.__class__}"
@@ -230,7 +250,7 @@ class SelfQueryRetriever(BaseRetriever):
 
     @model_validator(mode="before")
     @classmethod
-    def validate_translator(cls, values: Dict) -> Any:
+    def validate_translator(cls, values: dict) -> Any:
         """Validate translator."""
         if "structured_query_translator" not in values:
             values["structured_query_translator"] = _get_builtin_translator(
@@ -245,7 +265,7 @@ class SelfQueryRetriever(BaseRetriever):
 
     def _prepare_query(
         self, query: str, structured_query: StructuredQuery
-    ) -> Tuple[str, Dict[str, Any]]:
+    ) -> tuple[str, dict[str, Any]]:
         new_query, new_kwargs = self.structured_query_translator.visit_structured_query(
             structured_query
         )
@@ -257,20 +277,20 @@ class SelfQueryRetriever(BaseRetriever):
         return new_query, search_kwargs
 
     def _get_docs_with_query(
-        self, query: str, search_kwargs: Dict[str, Any]
-    ) -> List[Document]:
+        self, query: str, search_kwargs: dict[str, Any]
+    ) -> list[Document]:
         docs = self.vectorstore.search(query, self.search_type, **search_kwargs)
         return docs
 
     async def _aget_docs_with_query(
-        self, query: str, search_kwargs: Dict[str, Any]
-    ) -> List[Document]:
+        self, query: str, search_kwargs: dict[str, Any]
+    ) -> list[Document]:
         docs = await self.vectorstore.asearch(query, self.search_type, **search_kwargs)
         return docs
 
     def _get_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun
-    ) -> List[Document]:
+    ) -> list[Document]:
         """Get documents relevant for a query.
 
         Args:
@@ -290,7 +310,7 @@ class SelfQueryRetriever(BaseRetriever):
 
     async def _aget_relevant_documents(
         self, query: str, *, run_manager: AsyncCallbackManagerForRetrieverRun
-    ) -> List[Document]:
+    ) -> list[Document]:
         """Get documents relevant for a query.
 
         Args:
@@ -316,7 +336,7 @@ class SelfQueryRetriever(BaseRetriever):
         document_contents: str,
         metadata_field_info: Sequence[Union[AttributeInfo, dict]],
         structured_query_translator: Optional[Visitor] = None,
-        chain_kwargs: Optional[Dict] = None,
+        chain_kwargs: Optional[dict] = None,
         enable_limit: bool = False,
         use_original_query: bool = False,
         **kwargs: Any,

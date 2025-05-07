@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
+from langchain_core._api import deprecated
 from langchain_core.callbacks import Callbacks
 from langchain_core.documents import Document
 from langchain_core.prompts import BasePromptTemplate, format_document
@@ -20,6 +21,15 @@ def _get_default_document_prompt() -> PromptTemplate:
     return PromptTemplate(input_variables=["page_content"], template="{page_content}")
 
 
+@deprecated(
+    since="0.3.1",
+    removal="1.0",
+    message=(
+        "This class is deprecated. Please see the migration guide here for "
+        "a recommended replacement: "
+        "https://python.langchain.com/docs/versions/migrating_chains/refine_docs_chain/"  # noqa: E501
+    ),
+)
 class RefineDocumentsChain(BaseCombineDocumentsChain):
     """Combine documents by doing a first pass and then refining on more documents.
 
@@ -88,7 +98,7 @@ class RefineDocumentsChain(BaseCombineDocumentsChain):
     """Return the results of the refine steps in the output."""
 
     @property
-    def output_keys(self) -> List[str]:
+    def output_keys(self) -> list[str]:
         """Expect input key.
 
         :meta private:
@@ -105,7 +115,7 @@ class RefineDocumentsChain(BaseCombineDocumentsChain):
 
     @model_validator(mode="before")
     @classmethod
-    def get_return_intermediate_steps(cls, values: Dict) -> Any:
+    def get_return_intermediate_steps(cls, values: dict) -> Any:
         """For backwards compatibility."""
         if "return_refine_steps" in values:
             values["return_intermediate_steps"] = values["return_refine_steps"]
@@ -114,7 +124,7 @@ class RefineDocumentsChain(BaseCombineDocumentsChain):
 
     @model_validator(mode="before")
     @classmethod
-    def get_default_document_variable_name(cls, values: Dict) -> Any:
+    def get_default_document_variable_name(cls, values: dict) -> Any:
         """Get default document variable name, if not provided."""
         if "initial_llm_chain" not in values:
             raise ValueError("initial_llm_chain must be provided")
@@ -137,8 +147,8 @@ class RefineDocumentsChain(BaseCombineDocumentsChain):
         return values
 
     def combine_docs(
-        self, docs: List[Document], callbacks: Callbacks = None, **kwargs: Any
-    ) -> Tuple[str, dict]:
+        self, docs: list[Document], callbacks: Callbacks = None, **kwargs: Any
+    ) -> tuple[str, dict]:
         """Combine by mapping first chain over all, then stuffing into final chain.
 
         Args:
@@ -162,8 +172,8 @@ class RefineDocumentsChain(BaseCombineDocumentsChain):
         return self._construct_result(refine_steps, res)
 
     async def acombine_docs(
-        self, docs: List[Document], callbacks: Callbacks = None, **kwargs: Any
-    ) -> Tuple[str, dict]:
+        self, docs: list[Document], callbacks: Callbacks = None, **kwargs: Any
+    ) -> tuple[str, dict]:
         """Async combine by mapping a first chain over all, then stuffing
          into a final chain.
 
@@ -187,22 +197,22 @@ class RefineDocumentsChain(BaseCombineDocumentsChain):
             refine_steps.append(res)
         return self._construct_result(refine_steps, res)
 
-    def _construct_result(self, refine_steps: List[str], res: str) -> Tuple[str, dict]:
+    def _construct_result(self, refine_steps: list[str], res: str) -> tuple[str, dict]:
         if self.return_intermediate_steps:
             extra_return_dict = {"intermediate_steps": refine_steps}
         else:
             extra_return_dict = {}
         return res, extra_return_dict
 
-    def _construct_refine_inputs(self, doc: Document, res: str) -> Dict[str, Any]:
+    def _construct_refine_inputs(self, doc: Document, res: str) -> dict[str, Any]:
         return {
             self.document_variable_name: format_document(doc, self.document_prompt),
             self.initial_response_name: res,
         }
 
     def _construct_initial_inputs(
-        self, docs: List[Document], **kwargs: Any
-    ) -> Dict[str, Any]:
+        self, docs: list[Document], **kwargs: Any
+    ) -> dict[str, Any]:
         base_info = {"page_content": docs[0].page_content}
         base_info.update(docs[0].metadata)
         document_info = {k: base_info[k] for k in self.document_prompt.input_variables}

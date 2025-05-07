@@ -68,7 +68,7 @@ class TextSplitter(BaseDocumentTransformer, ABC):
         """Split text into multiple components."""
 
     def create_documents(
-        self, texts: List[str], metadatas: Optional[List[dict]] = None
+        self, texts: list[str], metadatas: Optional[list[dict[Any, Any]]] = None
     ) -> List[Document]:
         """Create documents from a list of texts."""
         _metadatas = metadatas or [{}] * len(texts)
@@ -158,7 +158,7 @@ class TextSplitter(BaseDocumentTransformer, ABC):
                 )
 
             def _huggingface_tokenizer_length(text: str) -> int:
-                return len(tokenizer.encode(text))
+                return len(tokenizer.tokenize(text))
 
         except ImportError:
             raise ValueError(
@@ -249,6 +249,21 @@ class TokenTextSplitter(TextSplitter):
         self._disallowed_special = disallowed_special
 
     def split_text(self, text: str) -> List[str]:
+        """Splits the input text into smaller chunks based on tokenization.
+
+        This method uses a custom tokenizer configuration to encode the input text
+        into tokens, processes the tokens in chunks of a specified size with overlap,
+        and decodes them back into text chunks. The splitting is performed using the
+        `split_text_on_tokens` function.
+
+        Args:
+            text (str): The input text to be split into smaller chunks.
+
+        Returns:
+            List[str]: A list of text chunks, where each chunk is derived from a portion
+            of the input text based on the tokenization and chunking rules.
+        """
+
         def _encode(_text: str) -> List[int]:
             return self._tokenizer.encode(
                 _text,

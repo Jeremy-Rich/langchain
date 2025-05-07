@@ -1,15 +1,13 @@
 """Test Ollama embeddings."""
 
-from typing import Type
-
-from langchain_standard_tests.integration_tests import EmbeddingsIntegrationTests
+from langchain_tests.integration_tests import EmbeddingsIntegrationTests
 
 from langchain_ollama.embeddings import OllamaEmbeddings
 
 
 class TestOllamaEmbeddings(EmbeddingsIntegrationTests):
     @property
-    def embeddings_class(self) -> Type[OllamaEmbeddings]:
+    def embeddings_class(self) -> type[OllamaEmbeddings]:
         return OllamaEmbeddings
 
     @property

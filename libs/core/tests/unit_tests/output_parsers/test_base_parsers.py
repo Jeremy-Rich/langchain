@@ -1,7 +1,6 @@
 """Module to test base parser implementations."""
 
-from typing import List
-from typing import Optional as Optional
+from typing_extensions import override
 
 from langchain_core.exceptions import OutputParserException
 from langchain_core.language_models import GenericFakeChatModel
@@ -19,8 +18,9 @@ def test_base_generation_parser() -> None:
     class StrInvertCase(BaseGenerationOutputParser[str]):
         """An example parser that inverts the case of the characters in the message."""
 
+        @override
         def parse_result(
-            self, result: List[Generation], *, partial: bool = False
+            self, result: list[Generation], *, partial: bool = False
         ) -> str:
             """Parse a list of model Generations into a specific format.
 
@@ -33,21 +33,17 @@ def test_base_generation_parser() -> None:
                          that support streaming
             """
             if len(result) != 1:
-                raise NotImplementedError(
-                    "This output parser can only be used with a single generation."
-                )
+                msg = "This output parser can only be used with a single generation."
+                raise NotImplementedError(msg)
             generation = result[0]
             if not isinstance(generation, ChatGeneration):
                 # Say that this one only works with chat generations
-                raise OutputParserException(
-                    "This output parser can only be used with a chat generation."
-                )
+                msg = "This output parser can only be used with a chat generation."
+                raise OutputParserException(msg)
 
             content = generation.message.content
             assert isinstance(content, str)
-            return content.swapcase()  # type: ignore
-
-    StrInvertCase.model_rebuild()
+            return content.swapcase()
 
     model = GenericFakeChatModel(messages=iter([AIMessage(content="hEllo")]))
     chain = model | StrInvertCase()
@@ -62,10 +58,11 @@ def test_base_transform_output_parser() -> None:
 
         def parse(self, text: str) -> str:
             """Parse a single string into a specific format."""
-            raise NotImplementedError()
+            raise NotImplementedError
 
+        @override
         def parse_result(
-            self, result: List[Generation], *, partial: bool = False
+            self, result: list[Generation], *, partial: bool = False
         ) -> str:
             """Parse a list of model Generations into a specific format.
 
@@ -78,21 +75,19 @@ def test_base_transform_output_parser() -> None:
                          that support streaming
             """
             if len(result) != 1:
-                raise NotImplementedError(
-                    "This output parser can only be used with a single generation."
-                )
+                msg = "This output parser can only be used with a single generation."
+                raise NotImplementedError(msg)
             generation = result[0]
             if not isinstance(generation, ChatGeneration):
                 # Say that this one only works with chat generations
-                raise OutputParserException(
-                    "This output parser can only be used with a chat generation."
-                )
+                msg = "This output parser can only be used with a chat generation."
+                raise OutputParserException(msg)
             content = generation.message.content
             assert isinstance(content, str)
-            return content.swapcase()  # type: ignore
+            return content.swapcase()
 
     model = GenericFakeChatModel(messages=iter([AIMessage(content="hello world")]))
     chain = model | StrInvertCase()
     # inputs to models are ignored, response is hard-coded in model definition
-    chunks = [chunk for chunk in chain.stream("")]
+    chunks = list(chain.stream(""))
     assert chunks == ["HELLO", " ", "WORLD"]

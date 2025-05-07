@@ -8,9 +8,38 @@ from langchain_core.documents import Document
 
 
 class RecursiveJsonSplitter:
+    """Splits JSON data into smaller, structured chunks while preserving hierarchy.
+
+    This class provides methods to split JSON data into smaller dictionaries or
+    JSON-formatted strings based on configurable maximum and minimum chunk sizes.
+    It supports nested JSON structures, optionally converts lists into dictionaries
+    for better chunking, and allows the creation of document objects for further use.
+
+    Attributes:
+        max_chunk_size (int): The maximum size for each chunk. Defaults to 2000.
+        min_chunk_size (int): The minimum size for each chunk, derived from
+            `max_chunk_size` if not explicitly provided.
+    """
+
     def __init__(
         self, max_chunk_size: int = 2000, min_chunk_size: Optional[int] = None
     ):
+        """Initialize the chunk size configuration for text processing.
+
+        This constructor sets up the maximum and minimum chunk sizes, ensuring that
+        the `min_chunk_size` defaults to a value slightly smaller than the
+        `max_chunk_size` if not explicitly provided.
+
+        Args:
+            max_chunk_size (int): The maximum size for a chunk. Defaults to 2000.
+            min_chunk_size (Optional[int]): The minimum size for a chunk. If None,
+                defaults to the maximum chunk size minus 200, with a lower bound of 50.
+
+        Attributes:
+            max_chunk_size (int): The configured maximum size for each chunk.
+            min_chunk_size (int): The configured minimum size for each chunk, derived
+                from `max_chunk_size` if not explicitly provided.
+        """
         super().__init__()
         self.max_chunk_size = max_chunk_size
         self.min_chunk_size = (
@@ -20,12 +49,12 @@ class RecursiveJsonSplitter:
         )
 
     @staticmethod
-    def _json_size(data: Dict) -> int:
+    def _json_size(data: dict[str, Any]) -> int:
         """Calculate the size of the serialized JSON object."""
         return len(json.dumps(data))
 
     @staticmethod
-    def _set_nested_dict(d: Dict, path: List[str], value: Any) -> None:
+    def _set_nested_dict(d: dict[str, Any], path: list[str], value: Any) -> None:
         """Set a value in a nested dictionary based on the given path."""
         for key in path[:-1]:
             d = d.setdefault(key, {})
@@ -47,13 +76,11 @@ class RecursiveJsonSplitter:
 
     def _json_split(
         self,
-        data: Dict[str, Any],
-        current_path: Optional[List[str]] = None,
-        chunks: Optional[List[Dict]] = None,
-    ) -> List[Dict]:
-        """
-        Split json into maximum size dictionaries while preserving structure.
-        """
+        data: dict[str, Any],
+        current_path: Optional[list[str]] = None,
+        chunks: Optional[list[dict[str, Any]]] = None,
+    ) -> list[dict[str, Any]]:
+        """Split json into maximum size dictionaries while preserving structure."""
         current_path = current_path or []
         chunks = chunks if chunks is not None else [{}]
         if isinstance(data, dict):
@@ -80,11 +107,10 @@ class RecursiveJsonSplitter:
 
     def split_json(
         self,
-        json_data: Dict[str, Any],
+        json_data: dict[str, Any],
         convert_lists: bool = False,
-    ) -> List[Dict]:
-        """Splits JSON into a list of JSON chunks"""
-
+    ) -> list[dict[str, Any]]:
+        """Splits JSON into a list of JSON chunks."""
         if convert_lists:
             chunks = self._json_split(self._list_to_dict_preprocessing(json_data))
         else:
@@ -101,8 +127,7 @@ class RecursiveJsonSplitter:
         convert_lists: bool = False,
         ensure_ascii: bool = True,
     ) -> List[str]:
-        """Splits JSON into a list of JSON formatted strings"""
-
+        """Splits JSON into a list of JSON formatted strings."""
         chunks = self.split_json(json_data=json_data, convert_lists=convert_lists)
 
         # Convert to string
@@ -110,11 +135,11 @@ class RecursiveJsonSplitter:
 
     def create_documents(
         self,
-        texts: List[Dict],
+        texts: list[dict[str, Any]],
         convert_lists: bool = False,
         ensure_ascii: bool = True,
-        metadatas: Optional[List[dict]] = None,
-    ) -> List[Document]:
+        metadatas: Optional[list[dict[Any, Any]]] = None,
+    ) -> list[Document]:
         """Create documents from a list of json objects (Dict)."""
         _metadatas = metadatas or [{}] * len(texts)
         documents = []

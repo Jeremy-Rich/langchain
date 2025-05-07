@@ -1,8 +1,8 @@
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import pytest
 from pydantic import ConfigDict, Field, model_validator
-from typing_extensions import Self
+from typing_extensions import Self, override
 
 from langchain_core.runnables import (
     ConfigurableField,
@@ -21,9 +21,10 @@ class MyRunnable(RunnableSerializable[str, str]):
 
     @model_validator(mode="before")
     @classmethod
-    def my_error(cls, values: Dict[str, Any]) -> Any:
+    def my_error(cls, values: dict[str, Any]) -> Any:
         if "_my_hidden_property" in values:
-            raise ValueError("Cannot set _my_hidden_property")
+            msg = "Cannot set _my_hidden_property"
+            raise ValueError(msg)
         return values
 
     @model_validator(mode="after")
@@ -31,19 +32,25 @@ class MyRunnable(RunnableSerializable[str, str]):
         self._my_hidden_property = self.my_property
         return self
 
-    def invoke(self, input: str, config: Optional[RunnableConfig] = None) -> Any:
+    @override
+    def invoke(
+        self, input: str, config: Optional[RunnableConfig] = None, **kwargs: Any
+    ) -> Any:
         return input + self._my_hidden_property
 
     def my_custom_function(self) -> str:
         return self.my_property
 
     def my_custom_function_w_config(
-        self, config: Optional[RunnableConfig] = None
+        self,
+        config: Optional[RunnableConfig] = None,  # noqa: ARG002
     ) -> str:
         return self.my_property
 
     def my_custom_function_w_kw_config(
-        self, *, config: Optional[RunnableConfig] = None
+        self,
+        *,
+        config: Optional[RunnableConfig] = None,  # noqa: ARG002
     ) -> str:
         return self.my_property
 
@@ -51,19 +58,22 @@ class MyRunnable(RunnableSerializable[str, str]):
 class MyOtherRunnable(RunnableSerializable[str, str]):
     my_other_property: str
 
-    def invoke(self, input: str, config: Optional[RunnableConfig] = None) -> Any:
+    @override
+    def invoke(
+        self, input: str, config: Optional[RunnableConfig] = None, **kwargs: Any
+    ) -> Any:
         return input + self.my_other_property
 
     def my_other_custom_function(self) -> str:
         return self.my_other_property
 
-    def my_other_custom_function_w_config(self, config: RunnableConfig) -> str:
+    def my_other_custom_function_w_config(self, config: RunnableConfig) -> str:  # noqa: ARG002
         return self.my_other_property
 
 
 def test_doubly_set_configurable() -> None:
-    """Test that setting a configurable field with a default value works"""
-    runnable = MyRunnable(my_property="a")  # type: ignore
+    """Test that setting a configurable field with a default value works."""
+    runnable = MyRunnable(my_property="a")  # type: ignore[call-arg]
     configurable_runnable = runnable.configurable_fields(
         my_property=ConfigurableField(
             id="my_property",
@@ -76,7 +86,7 @@ def test_doubly_set_configurable() -> None:
 
 
 def test_alias_set_configurable() -> None:
-    runnable = MyRunnable(my_property="a")  # type: ignore
+    runnable = MyRunnable(my_property="a")  # type: ignore[call-arg]
     configurable_runnable = runnable.configurable_fields(
         my_property=ConfigurableField(
             id="my_property_alias",
@@ -112,7 +122,7 @@ def test_field_alias_set_configurable() -> None:
 
 
 def test_config_passthrough() -> None:
-    runnable = MyRunnable(my_property="a")  # type: ignore
+    runnable = MyRunnable(my_property="a")  # type: ignore[call-arg]
     configurable_runnable = runnable.configurable_fields(
         my_property=ConfigurableField(
             id="my_property",
@@ -148,7 +158,7 @@ def test_config_passthrough() -> None:
 
 
 def test_config_passthrough_nested() -> None:
-    runnable = MyRunnable(my_property="a")  # type: ignore
+    runnable = MyRunnable(my_property="a")  # type: ignore[call-arg]
     configurable_runnable = runnable.configurable_fields(
         my_property=ConfigurableField(
             id="my_property",

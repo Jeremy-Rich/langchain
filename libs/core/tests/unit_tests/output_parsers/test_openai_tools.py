@@ -1,7 +1,8 @@
-from typing import Any, AsyncIterator, Iterator, List
+from collections.abc import AsyncIterator, Iterator
+from typing import Any
 
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from langchain_core.messages import (
     AIMessage,
@@ -15,7 +16,10 @@ from langchain_core.output_parsers.openai_tools import (
     PydanticToolsParser,
 )
 from langchain_core.outputs import ChatGeneration
-from langchain_core.utils.pydantic import PYDANTIC_MAJOR_VERSION
+from langchain_core.utils.pydantic import (
+    IS_PYDANTIC_V1,
+    IS_PYDANTIC_V2,
+)
 
 STREAMED_MESSAGES: list = [
     AIMessageChunk(content=""),
@@ -361,7 +365,7 @@ EXPECTED_STREAMED_JSON = [
 ]
 
 
-def _get_iter(use_tool_calls: bool = False) -> Any:
+def _get_iter(*, use_tool_calls: bool = False) -> Any:
     if use_tool_calls:
         list_to_iter = STREAMED_MESSAGES_WITH_TOOL_CALLS
     else:
@@ -373,7 +377,7 @@ def _get_iter(use_tool_calls: bool = False) -> Any:
     return input_iter
 
 
-def _get_aiter(use_tool_calls: bool = False) -> Any:
+def _get_aiter(*, use_tool_calls: bool = False) -> Any:
     if use_tool_calls:
         list_to_iter = STREAMED_MESSAGES_WITH_TOOL_CALLS
     else:
@@ -388,7 +392,7 @@ def _get_aiter(use_tool_calls: bool = False) -> Any:
 
 def test_partial_json_output_parser() -> None:
     for use_tool_calls in [False, True]:
-        input_iter = _get_iter(use_tool_calls)
+        input_iter = _get_iter(use_tool_calls=use_tool_calls)
         chain = input_iter | JsonOutputToolsParser()
 
         actual = list(chain.stream(None))
@@ -401,7 +405,7 @@ def test_partial_json_output_parser() -> None:
 
 async def test_partial_json_output_parser_async() -> None:
     for use_tool_calls in [False, True]:
-        input_iter = _get_aiter(use_tool_calls)
+        input_iter = _get_aiter(use_tool_calls=use_tool_calls)
         chain = input_iter | JsonOutputToolsParser()
 
         actual = [p async for p in chain.astream(None)]
@@ -414,7 +418,7 @@ async def test_partial_json_output_parser_async() -> None:
 
 def test_partial_json_output_parser_return_id() -> None:
     for use_tool_calls in [False, True]:
-        input_iter = _get_iter(use_tool_calls)
+        input_iter = _get_iter(use_tool_calls=use_tool_calls)
         chain = input_iter | JsonOutputToolsParser(return_id=True)
 
         actual = list(chain.stream(None))
@@ -433,7 +437,7 @@ def test_partial_json_output_parser_return_id() -> None:
 
 def test_partial_json_output_key_parser() -> None:
     for use_tool_calls in [False, True]:
-        input_iter = _get_iter(use_tool_calls)
+        input_iter = _get_iter(use_tool_calls=use_tool_calls)
         chain = input_iter | JsonOutputKeyToolsParser(key_name="NameCollector")
 
         actual = list(chain.stream(None))
@@ -443,7 +447,7 @@ def test_partial_json_output_key_parser() -> None:
 
 async def test_partial_json_output_parser_key_async() -> None:
     for use_tool_calls in [False, True]:
-        input_iter = _get_aiter(use_tool_calls)
+        input_iter = _get_aiter(use_tool_calls=use_tool_calls)
 
         chain = input_iter | JsonOutputKeyToolsParser(key_name="NameCollector")
 
@@ -454,7 +458,7 @@ async def test_partial_json_output_parser_key_async() -> None:
 
 def test_partial_json_output_key_parser_first_only() -> None:
     for use_tool_calls in [False, True]:
-        input_iter = _get_iter(use_tool_calls)
+        input_iter = _get_iter(use_tool_calls=use_tool_calls)
 
         chain = input_iter | JsonOutputKeyToolsParser(
             key_name="NameCollector", first_tool_only=True
@@ -465,7 +469,7 @@ def test_partial_json_output_key_parser_first_only() -> None:
 
 async def test_partial_json_output_parser_key_async_first_only() -> None:
     for use_tool_calls in [False, True]:
-        input_iter = _get_aiter(use_tool_calls)
+        input_iter = _get_aiter(use_tool_calls=use_tool_calls)
 
         chain = input_iter | JsonOutputKeyToolsParser(
             key_name="NameCollector", first_tool_only=True
@@ -481,9 +485,9 @@ class Person(BaseModel):
 
 
 class NameCollector(BaseModel):
-    """record names of all people mentioned"""
+    """record names of all people mentioned."""
 
-    names: List[str] = Field(..., description="all names mentioned")
+    names: list[str] = Field(..., description="all names mentioned")
     person: Person = Field(..., description="info about the main subject")
 
 
@@ -506,7 +510,7 @@ EXPECTED_STREAMED_PYDANTIC = [
 
 def test_partial_pydantic_output_parser() -> None:
     for use_tool_calls in [False, True]:
-        input_iter = _get_iter(use_tool_calls)
+        input_iter = _get_iter(use_tool_calls=use_tool_calls)
 
         chain = input_iter | PydanticToolsParser(
             tools=[NameCollector], first_tool_only=True
@@ -518,7 +522,7 @@ def test_partial_pydantic_output_parser() -> None:
 
 async def test_partial_pydantic_output_parser_async() -> None:
     for use_tool_calls in [False, True]:
-        input_iter = _get_aiter(use_tool_calls)
+        input_iter = _get_aiter(use_tool_calls=use_tool_calls)
 
         chain = input_iter | PydanticToolsParser(
             tools=[NameCollector], first_tool_only=True
@@ -528,7 +532,7 @@ async def test_partial_pydantic_output_parser_async() -> None:
         assert actual == EXPECTED_STREAMED_PYDANTIC
 
 
-@pytest.mark.skipif(PYDANTIC_MAJOR_VERSION != 2, reason="This test is for pydantic 2")
+@pytest.mark.skipif(not IS_PYDANTIC_V2, reason="This test is for pydantic 2")
 def test_parse_with_different_pydantic_2_v1() -> None:
     """Test with pydantic.v1.BaseModel from pydantic 2."""
     import pydantic
@@ -563,7 +567,7 @@ def test_parse_with_different_pydantic_2_v1() -> None:
     ]
 
 
-@pytest.mark.skipif(PYDANTIC_MAJOR_VERSION != 2, reason="This test is for pydantic 2")
+@pytest.mark.skipif(not IS_PYDANTIC_V2, reason="This test is for pydantic 2")
 def test_parse_with_different_pydantic_2_proper() -> None:
     """Test with pydantic.BaseModel from pydantic 2."""
     import pydantic
@@ -574,7 +578,7 @@ def test_parse_with_different_pydantic_2_proper() -> None:
 
     # Can't get pydantic to work here due to the odd typing of tryig to support
     # both v1 and v2 in the same codebase.
-    parser = PydanticToolsParser(tools=[Forecast])  # type: ignore[list-item]
+    parser = PydanticToolsParser(tools=[Forecast])
     message = AIMessage(
         content="",
         tool_calls=[
@@ -598,7 +602,7 @@ def test_parse_with_different_pydantic_2_proper() -> None:
     ]
 
 
-@pytest.mark.skipif(PYDANTIC_MAJOR_VERSION != 1, reason="This test is for pydantic 1")
+@pytest.mark.skipif(not IS_PYDANTIC_V1, reason="This test is for pydantic 1")
 def test_parse_with_different_pydantic_1_proper() -> None:
     """Test with pydantic.BaseModel from pydantic 1."""
     import pydantic
@@ -609,7 +613,7 @@ def test_parse_with_different_pydantic_1_proper() -> None:
 
     # Can't get pydantic to work here due to the odd typing of tryig to support
     # both v1 and v2 in the same codebase.
-    parser = PydanticToolsParser(tools=[Forecast])  # type: ignore[list-item]
+    parser = PydanticToolsParser(tools=[Forecast])
     message = AIMessage(
         content="",
         tool_calls=[
@@ -631,3 +635,24 @@ def test_parse_with_different_pydantic_1_proper() -> None:
             forecast="Sunny",
         )
     ]
+
+
+def test_max_tokens_error(caplog: Any) -> None:
+    parser = PydanticToolsParser(tools=[NameCollector], first_tool_only=True)
+    input = AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "id": "call_OwL7f5PE",
+                "name": "NameCollector",
+                "args": {"names": ["suz", "jerm"]},
+            }
+        ],
+        response_metadata={"stop_reason": "max_tokens"},
+    )
+    with pytest.raises(ValidationError):
+        _ = parser.invoke(input)
+    assert any(
+        "`max_tokens` stop reason" in msg and record.levelname == "ERROR"
+        for record, msg in zip(caplog.records, caplog.messages)
+    )

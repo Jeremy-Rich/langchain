@@ -1,7 +1,5 @@
 """Chain that carries on a conversation and calls an LLM."""
 
-from typing import List
-
 from langchain_core._api import deprecated
 from langchain_core.memory import BaseMemory
 from langchain_core.prompts import BasePromptTemplate
@@ -25,7 +23,7 @@ class ConversationChain(LLMChain):
     """Chain to have a conversation and load context from memory.
 
     This class is deprecated in favor of ``RunnableWithMessageHistory``. Please refer
-    to this tutorial for more detail: https://python.langchain.com/v0.2/docs/tutorials/chatbot/
+    to this tutorial for more detail: https://python.langchain.com/docs/tutorials/chatbot/
 
     ``RunnableWithMessageHistory`` offers several benefits, including:
 
@@ -121,7 +119,7 @@ class ConversationChain(LLMChain):
         return False
 
     @property
-    def input_keys(self) -> List[str]:
+    def input_keys(self) -> list[str]:
         """Use this since so some prompt vars come from history."""
         return [self.input_key]
 
